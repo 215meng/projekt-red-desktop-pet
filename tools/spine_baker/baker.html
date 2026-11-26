@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Spine Red Industrial Baker v4.5</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #181818;
+      color: #eee;
+      font-family: Consolas, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #stage-container {
+      width: 360px;
+      height: 480px;
+      position: relative;
+      margin-top: 15px;
+      background-image: linear-gradient(45deg, #252525 25%, transparent 25%),
+                        linear-gradient(-45deg, #252525 25%, transparent 25%),
+                        linear-gradient(45deg, transparent 75%, #252525 75%),
+                        linear-gradient(-45deg, transparent 75%, #252525 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      border: 2px solid #444;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #spine-widget {
+      width: 360px;
+      height: 480px;
+    }
+    #log-box {
+      width: 500px;
+      margin-top: 15px;
+      padding: 10px;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 12px;
+      height: 120px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+  <script>
+    window.requestAnimationFrame = function(cb) {
+      return setTimeout(cb, 16);
+    };
+  </script>
+  <script src="spine-widget.js"></script>
+</head>
+<body>
+  <div id="stage-container">
+    <div id="spine-widget"></div>
+  </div>
+  <div id="log-box"></div>
+
+  <script>
+    var currentWidget = null;
+    var currentModelType = "build";
+    var isLoaded = false;
+    var viewOffsetX = 0;
+    var viewOffsetY = 0;
+    var viewScale = 0.85;
+    var logBox = document.getElementById("log-box");
+
+    function log(msg) {
+      console.log(msg);
+      logBox.innerText += msg + "\n";
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    window.onerror = function(msg, url, line) {
+      log("GlobalError: " + msg + " at " + line);
+    };
+
+    function initWidget(modelType, animName, callback) {
+      var container = document.getElementById("spine-widget");
+      container.innerHTML = "";
+      isLoaded = false;
+      currentModelType = modelType;
+
+      var isBattle = (modelType === "battle");
+      // 使用扩展后的 build_pet 资产（不破坏官方 build 原档）
+      var jsonPath = isBattle ? "assets/front/char_144_red.json" : "assets/build_pet/build_char_144_red.json";
+      var atlasPath = isBattle ? "assets/front/char_144_red.atlas" : "assets/build_pet/build_char_144_red.atlas";
+      var defaultAnim = animName || (isBattle ? "Idle" : "Relax");
+
+      var posX = 180;
+      var posY = isBattle ? 26 : 22;
+      var scale = isBattle ? 0.85 : 0.88;
+
+      var cfg = {
+        json: jsonPath,
+        atlas: atlasPath,
+        animation: defaultAnim,
+        skin: "default",
+        scale: scale,
+        x: posX,
+        y: posY,
+        fitToCanvas: false,
+        alpha: true,
+        preserveDrawingBuffer: true,
+        premultipliedAlpha: true,
+        backgroundColor: "#00000000",
+        loop: true,
+        success: function(widget) {
+          log("SUCCESS: 模型与纹理装载完成！模型: " + modelType);
+          isLoaded = true;
+          widget.pause();
+          widget.skeleton.x = posX;
+          widget.skeleton.y = posY;
+          widget.skeleton.scaleX = scale;
+          widget.skeleton.scaleY = scale;
+          if (callback) callback(true);
+        },
+        error: function(widget, err) {
+          log("ERROR: 装载失败 - " + err);
+          if (callback) callback(false, err);
+        }
+      };
+
+      try {
+        currentWidget = new spine.SpineWidget("spine-widget", cfg);
+      } catch (e) {
+        log("EXCEPTION: " + e.message);
+        if (callback) callback(false, e.message);
+      }
+    }
+
+    // ==================== 通用解剖学与数学辅助工具 ====================
+    function clamp(v, lo, hi) {
+      return v < lo ? lo : (v > hi ? hi : v);
+    }
+
+    function smoothCos(p) {
+      p = clamp(p, 0.0, 1.0);
+      return 0.5 * (1.0 - Math.cos(Math.PI * p));
+    }
+
+    function smoothEnvelope(t, dur, fadeIn, fadeOut) {
+      fadeIn = fadeIn || 0.32;
+      fadeOut = fadeOut || fadeIn;
+      if (t <= 0.0 || t >= dur) return 0.0;
+      if (t < fadeIn) return smoothCos(t / fadeIn);
+      if (t > dur - fadeOut) return smoothCos((dur - t) / fadeOut);
+      return 1.0;
+    }
+
+    function rotBone(sk, name, deltaDeg) {
+      var b = sk.findBone(name);
+      if (b) b.rotation += deltaDeg;
+    }
+
+    function moveBone(sk, name, dx, dy) {
+      var b = sk.findBone(name);
+      if (b) {
+        if (dx) b.x += dx;
+        if (dy) b.y += dy;
+      }
+    }
+
+    function setSlotAtt(sk, slotName, attName) {
+      var slot = sk.findSlot(slotName);
+      if (!slot) return;
+      if (!attName) {
+        slot.setAttachment(null);
+        return;
+      }
+      var att = sk.getAttachmentByName(slotName, attName);
+      if (!att && sk.data.defaultSkin) {
+        att = sk.data.defaultSkin.getAttachment(slot.data.index, attName);
+      }
+      if (att) slot.setAttachment(att);
+    }
+
+    function setSlotAlpha(sk, slotName, alpha) {
+      var slot = sk.findSlot(slotName);
+      if (slot && slot.color) slot.color.a = clamp(alpha, 0.0, 1.0);
+    }
+
+    function setBoneScale(sk, name, sx, sy) {
+      var b = sk.findBone(name);
+      if (b) {
+        b.scaleX = sx;
+        b.scaleY = sy !== undefined ? sy : sx;
+      }
+    }
+
+    // 实时驱动 RegionAttachment 的平移、旋转与缩放（并刷新顶点 offset）
+    function transformRegionAtt(sk, slotName, dx, dy, dRot, sx, sy) {
+      var slot = sk.findSlot(slotName);
+      if (!slot || !slot.attachment) return;
+      var att = slot.attachment;
+      if (!att._origPose) {
+        att._origPose = {
+          x: att.x || 0,
+          y: att.y || 0,
+          rotation: att.rotation || 0,
+          scaleX: att.scaleX !== undefined ? att.scaleX : 1,
+          scaleY: att.scaleY !== undefined ? att.scaleY : 1
+        };
+      }
+      att.x = att._origPose.x + (dx || 0);
+      att.y = att._origPose.y + (dy || 0);
+      att.rotation = att._origPose.rotation + (dRot || 0);
+      att.scaleX = att._origPose.scaleX * (sx !== undefined ? sx : 1);
+      att.scaleY = att._origPose.scaleY * (sy !== undefined ? sy : (sx !== undefined ? sx : 1));
+      if (typeof att.updateOffset === "function") {
+        att.updateOffset();
+      }
+    }
+
+    // 把若干插槽依次提升到参照插槽（如 F_Mask / F_F_Hair）之后
+    function moveSlotsAfter(sk, slotNames, anchorSlotName) {
+      if (!sk.drawOrder) return;
+      var anchorSlot = sk.findSlot(anchorSlotName);
+      if (!anchorSlot) return;
+      // 先从 drawOrder 中提取要移动且存在的 slot 对象（保持相对顺序）
+      var toMove = [];
+      for (var i = 0; i < slotNames.length; i++) {
+        var s = sk.findSlot(slotNames[i]);
+        if (s) {
+          var idx = sk.drawOrder.indexOf(s);
+          if (idx !== -1) {
+            sk.drawOrder.splice(idx, 1);
+            toMove.push(s);
+          }
+        }
+      }
+      var anchorIdx = sk.drawOrder.indexOf(anchorSlot);
+      if (anchorIdx === -1) anchorIdx = sk.drawOrder.length - 1;
+      for (var j = 0; j < toMove.length; j++) {
+        sk.drawOrder.splice(anchorIdx + 1 + j, 0, toMove[j]);
+      }
+    }
+
+    // 解锁右手 IK 约束（让右手自由从大衣口袋伸出）
+    function setRightHandFreeMix(sk, freeMix) {
+      var ikR = sk.findIkConstraint("Ik_F_R_Hand");
+      if (ikR) ikR.mix = clamp(1.0 - freeMix, 0.0, 1.0);
+    }
+
+    // 4节大狼尾柔性波浪跟随
+    function applyTailWave(sk, baseDeg, waveAmp, freqHz, t, env) {
+      var chains = ["F_Tail", "bone43", "bone44", "bone45"];
+      var weights = [1.0, 0.65, 0.50, 0.38];
+      for (var i = 0; i < chains.length; i++) {
+        var ph = t * Math.PI * 2.0 * freqHz - i * 0.55;
+        var deg = (baseDeg * (i === 0 ? 1.0 : 0.32) + Math.sin(ph) * waveAmp * weights[i]) * env;
+        rotBone(sk, chains[i], deg);
+      }
+    }
+
+    // 3节活动狼耳联动
+    function applyEarWave(sk, baseDeg, twAmp, freqHz, t, env) {
+      var chains = ["F_L_Ear", "bone12", "bone13"];
+      var weights = [1.0, 0.55, 0.35];
+      for (var i = 0; i < chains.length; i++) {
+        var ph = t * Math.PI * 2.0 * freqHz - i * 0.45;
+        var deg = (baseDeg * weights[i] + Math.sin(ph) * twAmp * weights[i]) * env;
+        rotBone(sk, chains[i], deg);
+      }
+    }
+
+    // 脊柱三节安全俯仰：绝对禁止修改 F_Head.x，保证脖子与围巾 100% 紧密相连
+    function applySpineBend(sk, totalDeg) {
+      rotBone(sk, "F_Waist", totalDeg * 0.28);
+      rotBone(sk, "F_Chest", totalDeg * 0.34);
+      rotBone(sk, "F_Head",  totalDeg * 0.38);
+    }
+
+    // ==================== 核心逐帧绘制与动作动力学 ====================
+    function redrawCurrentFrame() {
+      var gl = currentWidget.gl;
+      var sk = currentWidget.skeleton;
+      var t = window.currentBakeTime || 0;
+      var pose = window.customPoseType || "";
+
+      // 默认彻底重置全部骨骼、插槽与 drawOrder，防止跨帧累积误差与图层污染
+      sk.setToSetupPose();
+
+      // 每帧局部视口偏移，绝不污染外部 setRenderParams 设置的全局基线 viewOffsetX/Y
+      var frameOffsetX = viewOffsetX || 0;
+      var frameOffsetY = viewOffsetY || 0;
+
+      // 对于纯过渡动作，先计算双轨道混合，再应用视角插值
+      if (pose === "trans_sit" || pose === "trans_sleep") {
+        var transInfo = window.transitionInfo || { from: "Relax", to: "Sit", dur: 0.8, p: 0.0 };
+        var p = clamp(t / (transInfo.dur || 0.8), 0.0, 1.0);
+        var w = smoothCos(p);
+        currentWidget.state.clearTracks();
+        currentWidget.state.setAnimation(0, transInfo.from, true);
+        var tr0 = currentWidget.state.getCurrent(0);
+        if (tr0) tr0.trackTime = 0.0;
+        if (w > 0.005) {
+          currentWidget.state.setAnimation(1, transInfo.to, true);
+          var tr1 = currentWidget.state.getCurrent(1);
+          if (tr1) {
+            tr1.trackTime = 0.0;
+            tr1.alpha = w;
+          }
+        }
+        currentWidget.state.apply(sk);
+
+        // 同步视口偏移无缝插值：确保与站姿(0,0) -> 坐姿(0,98) -> 睡姿(28,18) 完全对接
+        if (pose === "trans_sit") {
+          frameOffsetX = 0;
+          frameOffsetY = 98.0 * w;
+          viewScale = 0.85;
+        } else {
+          // 转身趴下中段略微提收重心避免飘带越过地面线
+          var arch = Math.sin(p * Math.PI) * 31.0;
+          frameOffsetX = 28.0 * w;
+          frameOffsetY = 98.0 + (18.0 - 98.0) * w + arch;
+          viewScale = 0.85;
+        }
+      } else {
+        // 触地着陆专属双轨道屈膝缓冲（回归 v4.2 自然双脚立定微屈膝，适度补偿避免盘腿跪坐感）
+        if (pose === "pure_land") {
+          var maxWeight = 0.26;
+          var sitWeight = 0.0;
+          if (t < 0.22) {
+            sitWeight = maxWeight * Math.sin((t / 0.22) * Math.PI * 0.5);
+          } else if (t < 0.70) {
+            sitWeight = maxWeight * (1.0 - smoothCos((t - 0.22) / 0.48));
+          }
+          if (sitWeight > 0.001) {
+            currentWidget.state.setAnimation(1, "Sit", false);
+            var trLand = currentWidget.state.getCurrent(1);
+            if (trLand) {
+              trLand.trackTime = 0.0;
+              trLand.alpha = sitWeight;
+            }
+            frameOffsetY += sitWeight * 22.0;
+          }
+        } else if (pose === "alert_scout") {
+          // 警惕蹲伏：通过 Sit 轨道混合压低重心，并补偿视口让脚底稳踩地面不陷地
+          var envA = smoothEnvelope(t, 1.8, 0.30, 0.35);
+          if (envA > 0.001) {
+            var alertWeight = 0.18 * envA;
+            currentWidget.state.setAnimation(1, "Sit", true);
+            var trAlert = currentWidget.state.getCurrent(1);
+            if (trAlert) {
+              trAlert.trackTime = 0.0;
+              trAlert.alpha = alertWeight;
+            }
+            frameOffsetY += alertWeight * 98.0;
+          }
+        } else if (pose === "dizzy") {
+          // Interact 后退防备步瞬间脚尖略微下探，温和托举并在踏步瞬间(0.22~0.46s)补正 3px
+          frameOffsetY += smoothEnvelope(t, 1.0, 0.20, 0.22) * 5.2 + smoothEnvelope(t - 0.22, 0.24, 0.08, 0.08) * 3.0;
+        }
+        currentWidget.state.apply(sk);
+      }
+
+      // 确保所有自定义插槽默认不显示（除非本动作显式激活）
+      var customSlots = ["P_HappyBlush", "P_SleepyEyes", "P_TearDrop", "P_SleepBubble", "P_KnifeSpark", "P_WhetstoneHand", "P_OpenHand", "P_FrontTail"];
+      for (var ci = 0; ci < customSlots.length; ci++) {
+        setSlotAtt(sk, customSlots[ci], null);
+      }
+
+      // -------------------- 各专属动作精密动力学 --------------------
+      if (pose === "drag_neck") {
+        // 1. 提溜悬空扑腾（参考 v4.2 自然插兜 + v4.5 重力垂尾）：后颈提起、双耳软垂、4节尾巴顺垂、小短腿轻快交替蹬踩
+        applyEarWave(sk, -26.0, 4.0, 2.0, t, 1.0);
+        applyTailWave(sk, 26.0, 7.0, 1.5, t, 1.0);
+
+        var kick = Math.sin(t * Math.PI * 4.0);
+        moveBone(sk, "Ik_F_L_Foot", kick * 6.0, kick * 16.0);
+        moveBone(sk, "Ik_F_R_Foot", -kick * 6.0, -kick * 16.0);
+        applySpineBend(sk, -5.0);
+        if (t > 0.40 && t < 0.56) {
+          setSlotAtt(sk, "F_Eyes", null);
+          setSlotAtt(sk, "P_SleepyEyes", "P_SleepyEyes");
+        }
+      }
+      else if (pose === "pure_fall") {
+        // 2. 半空飘落（参考 v4.2 垂直轻盈下落）：双手自然插兜，双腿微收悬垂，风衣与飘带克制迎风微扬
+        applyEarWave(sk, 15.0, 3.0, 4.0, t, 1.0);
+        applyTailWave(sk, -16.0, 4.0, 4.0, t, 1.0);
+        var wind = Math.sin(t * Math.PI * 6.0);
+        rotBone(sk, "bone8", 4.0 + wind * 2.0);
+        rotBone(sk, "bone9", 4.0 + wind * 2.0);
+        rotBone(sk, "bone30", -4.0 - wind * 2.0);
+        rotBone(sk, "bone31", -4.0 - wind * 2.0);
+        rotBone(sk, "F_L_Streamer", 6.0 + wind * 3.0);
+        rotBone(sk, "F_R_Streamer", -6.0 - wind * 3.0);
+        moveBone(sk, "Ik_F_L_Foot", 0, -8.0);
+        moveBone(sk, "Ik_F_R_Foot", 0, -8.0);
+        applySpineBend(sk, -4.0);
+      }
+      else if (pose === "pure_land") {
+        // 3. 触地缓冲（参考 v4.2 立定微屈膝）：t=0 0px承接 pure_fall，随后微蹲吸震、风衣飘带落回、末帧无缝回 idle
+        var rec = t < 0.22 ? 1.0 - smoothCos(t / 0.22) : 0.0;
+        var clothRec = t < 0.40 ? 1.0 - smoothCos(t / 0.40) : 0.0;
+        var damp = t < 0.22 ? smoothCos(t / 0.22) : (t < 0.72 ? 1.0 - smoothCos((t - 0.22) / 0.50) : 0.0);
+
+        rotBone(sk, "bone8", 4.0 * clothRec);
+        rotBone(sk, "bone9", 4.0 * clothRec);
+        rotBone(sk, "bone30", -4.0 * clothRec);
+        rotBone(sk, "bone31", -4.0 * clothRec);
+        rotBone(sk, "F_L_Streamer", 6.0 * clothRec);
+        rotBone(sk, "F_R_Streamer", -6.0 * clothRec);
+        moveBone(sk, "Ik_F_L_Foot", 0, -8.0 * rec);
+        moveBone(sk, "Ik_F_R_Foot", 0, -8.0 * rec);
+
+        applyTailWave(sk, -16.0 * rec + 18.0 * damp, 3.0, 2.0, t, clamp(rec + damp, 0.0, 1.0));
+        applyEarWave(sk, 15.0 * rec - 12.0 * damp, 2.0, 2.0, t, clamp(rec + damp, 0.0, 1.0));
+        applySpineBend(sk, -4.0 * rec - 6.0 * damp);
+        if (t > 0.85) {
+          setSlotAtt(sk, "F_Eye_Close", null);
+          setSlotAtt(sk, "F_Eyes", "F_Eyes");
+        }
+      }
+      else if (pose === "headpat") {
+        // 4. 温柔摸头互动 (1.5s)：闭上笑眼 + 柔和双颊红晕 + 脑袋轻仰迎合 + 欢快摇尾
+        var envH = smoothEnvelope(t, 1.50, 0.25, 0.30);
+        if (envH > 0.05) {
+          setSlotAtt(sk, "F_Eyes", null);
+          setSlotAtt(sk, "F_Eye_Close", "F_Eye_Close");
+          setSlotAtt(sk, "P_HappyBlush", "P_HappyBlush");
+          setSlotAlpha(sk, "P_HappyBlush", envH * 0.72);
+        }
+        // 头部温顺轻仰蹭掌心 (微幅摆动，绝不拔高 head.x)
+        var rub = Math.sin(t * Math.PI * 2.667) * 3.0 * envH;
+        applySpineBend(sk, 4.5 * envH + rub);
+        applyEarWave(sk, -14.0, 6.0, 3.5, t, envH);
+        applyTailWave(sk, -10.0, 16.0, 3.5, t, envH);
+      }
+      else if (pose === "sharpen_knife") {
+        // 5. 磨刀拭刃 (2.0s)：左手胸前持短匕首 + 右手握自制磨刀石贴刃往复推磨 + 刀锋寒芒闪烁
+        var envK = smoothEnvelope(t, 2.00, 0.35, 0.35);
+        setRightHandFreeMix(sk, envK);
+
+        if (envK > 0.05) {
+          setSlotAtt(sk, "F_R_Hand_B", null);
+          setSlotAtt(sk, "F_R_Hand", null);
+          setSlotAtt(sk, "P_WhetstoneHand", "P_WhetstoneHand");
+          setSlotAtt(sk, "F_L_Weapon", "F_L_Weapon");
+          // 将左臂与刀、右臂与磨刀石全部提升到身体前方，保证双手严密交汇
+          moveSlotsAfter(sk, ["F_L_Arm", "F_L_Forearm", "F_L_Hand", "F_L_Finger", "F_L_Weapon", "F_R_Arm", "F_R_Forearm", "P_WhetstoneHand", "P_KnifeSpark"], "F_R_Coat");
+          // 再确保右臂和磨刀石叠在武器上面（真正手握磨刀石压在刀刃上磨），寒芒最顶层
+          moveSlotsAfter(sk, ["F_R_Arm", "F_R_Forearm", "P_WhetstoneHand", "P_KnifeSpark"], "F_L_Weapon");
+        }
+
+        // 左臂内收横折，将便携短匕首稳稳置于胸腹前中线处
+        rotBone(sk, "F_L_Arm", 22.0 * envK);
+        rotBone(sk, "F_L_Forearm", 96.0 * envK);
+        rotBone(sk, "F_L_Hand", -62.0 * envK);
+
+        // 打磨推拉节律（2.5Hz，首尾乘 envK 归零）
+        var stroke = Math.sin(t * Math.PI * 5.0) * envK;
+        // 右臂向前伸展搭上匕首刀刃，握着战术磨刀石沿刀刃往复推磨
+        rotBone(sk, "F_R_Arm", (68.0 + stroke * 6.0) * envK);
+        rotBone(sk, "F_R_Forearm", (34.0 + stroke * 12.0) * envK);
+        rotBone(sk, "F_R_Hand", (-15.0 - stroke * 5.0) * envK);
+        transformRegionAtt(sk, "P_WhetstoneHand", 0, 0, -24.0, 1.0, 1.0);
+
+        // 刀锋寒芒星光在擦拭速度最快处闪亮绽放
+        if (envK > 0.6) {
+          var sparkPulse = Math.max(0.0, Math.abs(Math.cos(t * Math.PI * 5.0)) - 0.55) / 0.45;
+          if (sparkPulse > 0.1) {
+            setSlotAtt(sk, "P_KnifeSpark", "P_KnifeSpark");
+            var spScale = 0.7 + sparkPulse * 0.5;
+            transformRegionAtt(sk, "P_KnifeSpark", 0, 0, t * 180.0, spScale, spScale);
+            setSlotAlpha(sk, "P_KnifeSpark", sparkPulse * envK);
+          }
+        }
+
+        // 低头专注凝视刀刃（脊柱微前倾，绝不陷地）
+        applySpineBend(sk, -8.5 * envK);
+        applyEarWave(sk, 10.0, 2.0, 1.5, t, envK);
+        applyTailWave(sk, -4.0, 5.0, 1.0, t, envK);
+      }
+      else if (pose === "cuddle_tail") {
+        // 6. 抱尾蹭脸 (2.667s)：基于校准坐姿，激活胸前大狼尾 P_FrontTail + 双颊红晕笑眼 + 右手抱尾
+        var envC = smoothEnvelope(t, 2.667, 0.35, 0.35);
+        setRightHandFreeMix(sk, envC);
+
+        // 隐藏背后短尾，启用怀抱大狼尾，并用右手从前按抱在大尾巴上面
+        if (envC > 0.08) {
+          setSlotAtt(sk, "F_Tail", null);
+          setSlotAtt(sk, "P_FrontTail", "P_FrontTail");
+          setSlotAlpha(sk, "P_FrontTail", envC);
+          setSlotAtt(sk, "F_R_Hand_B", null);
+          setSlotAtt(sk, "F_R_Hand", null);
+          setSlotAtt(sk, "P_OpenHand", "P_OpenHand");
+          setSlotAlpha(sk, "P_OpenHand", envC);
+          setSlotAtt(sk, "F_Eyes", null);
+          setSlotAtt(sk, "F_Eye_Close", "F_Eye_Close");
+          setSlotAtt(sk, "P_HappyBlush", "P_HappyBlush");
+          setSlotAlpha(sk, "P_HappyBlush", envC * 0.76);
+          setSlotAtt(sk, "F_L_Finger", null);
+          // 确保蓬松大尾巴置于胸前防毒面具之外，右手小手轻轻按抱在尾巴绒毛外侧！
+          moveSlotsAfter(sk, ["F_L_Arm", "F_L_Forearm", "F_L_Hand", "P_FrontTail", "F_R_Arm", "F_R_Forearm", "P_OpenHand"], "F_Mask");
+        }
+
+        // 温柔埋头轻蹭怀里大狼尾
+        var nuzzle = Math.sin(t * Math.PI * 1.5) * 4.0 * envC;
+        applySpineBend(sk, -8.0 * envC + nuzzle);
+        // 右手抬到胸前温柔环抱按下大尾巴中段，左手内收托抱住尾巴右侧毛团（精准缩小手掌匹配袖口）
+        rotBone(sk, "F_R_Arm", (48.0 + nuzzle * 0.5) * envC);
+        rotBone(sk, "F_R_Forearm", 38.0 * envC);
+        rotBone(sk, "F_R_Hand", 15.0 * envC);
+        transformRegionAtt(sk, "P_OpenHand", 0, 0, 0, 0.68, 0.68);
+        rotBone(sk, "F_L_Arm", 20.0 * envC);
+        rotBone(sk, "F_L_Forearm", 85.0 * envC);
+        var lhScaleC = 1.0 - 0.30 * envC;
+        setBoneScale(sk, "F_L_Hand", lhScaleC, lhScaleC);
+        // 怀里水平横卧的蓬松大尾巴贴紧胸口与下巴正位，伴随呼吸柔顺微晃
+        transformRegionAtt(sk, "P_FrontTail", -4.0, -16.0 + Math.sin(t * Math.PI * 1.5) * 1.5 * envC, Math.sin(t * Math.PI * 1.5) * 3.5 * envC, 1.32, 1.32);
+        applyEarWave(sk, -18.0, 4.0, 2.0, t, envC);
+      }
+      else if (pose === "alert_scout") {
+        // 7. 警惕耸耳与环视 (1.80s)：双膝微蹲伏 + 单手微按腰后刀柄 + 双耳雷达竖立 + 全平滑侦察
+        var envS = smoothEnvelope(t, 1.80, 0.30, 0.35);
+        // 平滑侦察弧线：左望 -> 右望 -> 回中，完全连续余弦波形无任何瞬移抽搐！
+        var lookPhase = t < 0.30 ? 0.0 : (t < 1.50 ? (t - 0.30) / 1.20 : 1.0);
+        var lookWave = Math.sin(lookPhase * Math.PI * 2.0) * 6.5 * envS;
+
+        // 胸头小幅协同平滑环顾（头部旋转绝不超过 ±7°，下巴紧贴围巾绝不裂开）
+        rotBone(sk, "F_Waist", -3.0 * envS + lookWave * 0.25);
+        rotBone(sk, "F_Chest", -3.0 * envS + lookWave * 0.35);
+        rotBone(sk, "F_Head",  lookWave * 0.40);
+
+        // 左臂警觉微扬护在腰侧刀柄边
+        rotBone(sk, "F_L_Arm", 16.0 * envS);
+        rotBone(sk, "F_L_Forearm", 12.0 * envS);
+
+        // 狼耳直竖警戒 + 快速小幅雷达微动
+        applyEarWave(sk, 18.0, 4.0, 3.0, t, envS);
+        applyTailWave(sk, 12.0, 4.0, 2.5, t, envS);
+      }
+      else if (pose === "yawn_stretch") {
+        // 8. 萌系掩嘴哈欠 (2.00s)：右手出兜抬至嘴边轻掩 + 左臂舒展斜举 + 闭眼泪珠 + 尾翘抖耳
+        var envY = smoothEnvelope(t, 2.00, 0.35, 0.38);
+        setRightHandFreeMix(sk, envY);
+
+        if (envY > 0.08) {
+          // 右手抬到胸前/脸部最前层，位于 F_Mask 之后（即画在面具与嘴唇正前方！）
+          moveSlotsAfter(sk, ["F_R_Arm", "F_R_Forearm", "P_OpenHand"], "F_Mask");
+          // 左臂也提到身体前侧稍微舒展可见
+          moveSlotsAfter(sk, ["F_L_Arm", "F_L_Forearm", "F_L_Hand"], "F_R_Coat");
+          setSlotAtt(sk, "F_R_Hand_B", null);
+          setSlotAtt(sk, "F_R_Hand", null);
+          setSlotAtt(sk, "P_OpenHand", "P_OpenHand");
+          setSlotAlpha(sk, "P_OpenHand", envY);
+          setSlotAtt(sk, "F_L_Finger", null);
+          // 换上困倦安详闭眼 + 晶莹泪珠
+          setSlotAtt(sk, "F_Eyes", null);
+          setSlotAtt(sk, "F_Eye_Close", null);
+          setSlotAtt(sk, "P_SleepyEyes", "P_SleepyEyes");
+          setSlotAtt(sk, "F_Mouth", null);
+          setSlotAtt(sk, "F_Mouth_B", "F_Mouth_B");
+        }
+        // 在打哈欠最深处 (0.5s~1.5s) 眼角浮现晶莹小泪珠
+        var tearAlpha = smoothEnvelope(t - 0.35, 1.35, 0.25, 0.30);
+        if (tearAlpha > 0.05) {
+          setSlotAtt(sk, "P_TearDrop", "P_TearDrop");
+          setSlotAlpha(sk, "P_TearDrop", tearAlpha);
+          transformRegionAtt(sk, "P_TearDrop", -tearAlpha * 1.5, 0, 0, 0.8 + tearAlpha * 0.2, 0.8 + tearAlpha * 0.2);
+        }
+
+        // 右手秀气小手轻掩面具嘴前（缩放 0.62 严丝合缝匹配袖口，绝不遮挡闭眼与泪珠）
+        rotBone(sk, "F_R_Arm", 102.0 * envY);
+        rotBone(sk, "F_R_Forearm", 54.0 * envY);
+        rotBone(sk, "F_R_Hand", 28.0 * envY);
+        transformRegionAtt(sk, "P_OpenHand", 0, 0, -22.0, 0.62, 0.62);
+
+        // 左臂优雅斜向上舒展伸懒腰（同步缩小 F_L_Hand 消除大拳头感）
+        rotBone(sk, "F_L_Arm", 132.0 * envY);
+        rotBone(sk, "F_L_Forearm", -12.0 * envY);
+        var lhScaleY = 1.0 - 0.34 * envY;
+        setBoneScale(sk, "F_L_Hand", lhScaleY, lhScaleY);
+
+        // 脊柱舒适小幅后仰挺胸，4 节大狼尾向上舒展翘起
+        applySpineBend(sk, 7.5 * envY);
+        applyTailWave(sk, -26.0, 5.0, 1.5, t, envY);
+
+        // 哈欠收尾阶段 (1.4~1.85s) 双耳欢快抖动两下醒神
+        var earTwitch = 0.0;
+        if (t > 1.35 && t < 1.85) {
+          var tp = (t - 1.35) / 0.50;
+          earTwitch = Math.sin(tp * Math.PI * 4.0) * Math.sin(tp * Math.PI) * 10.0;
+        }
+        applyEarWave(sk, -8.0, 0.0, 1.0, t, envY);
+        rotBone(sk, "F_L_Ear", earTwitch);
+      }
+      else if (pose === "edge_peek") {
+        // 9. 边缘扒窗探头 (2.00s)：屈肘扶窗框姿态 + 秀气双掌(0.66x) + 温和前倾探头
+        var envP = smoothEnvelope(t, 2.00, 0.35, 0.35);
+        setRightHandFreeMix(sk, envP);
+
+        if (envP > 0.08) {
+          moveSlotsAfter(sk, ["F_R_Arm", "F_R_Forearm", "P_OpenHand"], "F_R_Coat");
+          moveSlotsAfter(sk, ["F_L_Arm", "F_L_Forearm", "F_L_Hand"], "F_R_Coat");
+          setSlotAtt(sk, "F_R_Hand_B", null);
+          setSlotAtt(sk, "F_R_Hand", null);
+          setSlotAtt(sk, "P_OpenHand", "P_OpenHand");
+          setSlotAlpha(sk, "P_OpenHand", envP);
+          setSlotAtt(sk, "F_L_Finger", null);
+          // 好奇张望期始终睁大灵动黄瞳，避免恰巧在 1.0s 时闭眼眨眼
+          setSlotAtt(sk, "F_Eye_Close", null);
+          setSlotAtt(sk, "F_Eyes", "F_Eyes");
+        }
+
+        // 双手屈肘内收作扶窗框状（摆脱僵直平举，并精确缩放至 0.66 比例）
+        rotBone(sk, "F_R_Arm", 48.0 * envP);
+        rotBone(sk, "F_R_Forearm", 42.0 * envP);
+        rotBone(sk, "F_R_Hand", -12.0 * envP);
+        transformRegionAtt(sk, "P_OpenHand", 0, 0, -10.0, 0.66, 0.66);
+        rotBone(sk, "F_L_Arm", 62.0 * envP);
+        rotBone(sk, "F_L_Forearm", 32.0 * envP);
+        var lhScaleP = 1.0 - 0.34 * envP;
+        setBoneScale(sk, "F_L_Hand", lhScaleP, lhScaleP);
+
+        // 脊柱三节温和联动前倾（向屏幕外侧探看，下巴 100% 紧贴围巾，绝无断裂）
+        var lookBob = Math.sin(t * Math.PI * 2.0) * 3.0 * envP;
+        applySpineBend(sk, -9.0 * envP + lookBob);
+
+        // 好奇耳朵前立高频轻颤，尾巴好奇轻摇
+        applyEarWave(sk, 14.0, 6.0, 3.5, t, envP);
+        applyTailWave(sk, -12.0, 8.0, 2.0, t, envP);
+      }
+      else if (pose === "doze_off") {
+        // 10. 深夜打瞌睡伴守 (2.667s 完整对齐 Sit 周期)：渐闭眼小鸡啄米打盹 + 睡眠泡呼吸 -> 激灵惊醒睁眼 -> 回归 Sit
+        if (t < 1.55) {
+          // 打盹期：0.12s 后柔和合眼（消除与 sit[0] 交接闪闭眼） + 鼻尖睡眠泡 + 两次小鸡啄米轻点
+          var dEnv = smoothEnvelope(t, 1.55, 0.25, 0.12);
+          if (t > 0.12) {
+            setSlotAtt(sk, "F_Eyes", null);
+            setSlotAtt(sk, "F_Eye_Close", null);
+            setSlotAtt(sk, "P_SleepyEyes", "P_SleepyEyes");
+          }
+
+          // 睡眠呼吸小气泡 (0.2s ~ 1.48s)
+          var bAlpha = smoothEnvelope(t - 0.18, 1.32, 0.20, 0.08);
+          if (bAlpha > 0.05) {
+            setSlotAtt(sk, "P_SleepBubble", "P_SleepBubble");
+            setSlotAlpha(sk, "P_SleepBubble", bAlpha * 0.92);
+            var bScale = (0.75 + 0.45 * Math.sin(t * Math.PI * 1.6)) * 1.22;
+            transformRegionAtt(sk, "P_SleepBubble", 4.0, -24.0, 0, bScale, bScale);
+          }
+
+          // 两次柔和小鸡啄米低头点醒
+          var nod1 = Math.sin(clamp(t / 0.78, 0.0, 1.0) * Math.PI);
+          var nod2 = t > 0.78 ? Math.sin(clamp((t - 0.78) / 0.77, 0.0, 1.0) * Math.PI) : 0.0;
+          var nodDeg = -(4.0 * dEnv + nod1 * 4.5 + nod2 * 6.5);
+          applySpineBend(sk, nodDeg);
+          applyEarWave(sk, -16.0, 2.0, 1.0, t, dEnv);
+          applyTailWave(sk, 10.0, 3.0, 1.0, t, dEnv);
+        } else {
+          // 1.55~2.667s: 突然警醒！猛睁开眼（切回 F_Eyes）轻颤挺直 + 抖抖耳朵 + 收敛回 Sit
+          var wEnv = smoothEnvelope(t - 1.55, 1.117, 0.12, 0.40);
+          var shake = Math.sin((t - 1.55) * Math.PI * 6.0) * wEnv * 8.0;
+          applySpineBend(sk, 5.0 * wEnv);
+          applyEarWave(sk, 16.0, 0.0, 1.0, t, wEnv);
+          rotBone(sk, "F_L_Ear", shake);
+          applyTailWave(sk, -10.0, 4.0, 2.0, t, wEnv);
+        }
+      }
+      else if (pose === "sleep_bubble") {
+        // 11. 熟睡附加轻柔呼吸睡眠泡（稍微往鼻侧上方偏移，保持泡体在地面线 Y=425 上方）
+        setSlotAtt(sk, "P_SleepBubble", "P_SleepBubble");
+        var sbScale = (0.80 + 0.30 * Math.sin(t * Math.PI * 1.0)) * 1.12;
+        transformRegionAtt(sk, "P_SleepBubble", 8.0, 6.0, 0, sbScale, sbScale);
+        setSlotAlpha(sk, "P_SleepBubble", 0.88);
+      }
+
+      // 必须先 resize() 再设置正交投影 MVP 矩阵，否则 resize 会把 MVP 覆盖还原！
+      currentWidget.resize();
+      var scale = viewScale || 1.0;
+      var w = 360 / scale;
+      var h = 480 / scale;
+      var x = -(w - 360) / 2 - frameOffsetX;
+      var y = -(h - 480) / 2 - frameOffsetY;
+      currentWidget.mvp.ortho2d(x, y, w, h);
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      sk.updateWorldTransform();
+
+      var shader = currentWidget.shader;
+      var batcher = currentWidget.batcher;
+      var skeletonRenderer = currentWidget.skeletonRenderer;
+
+      shader.bind();
+      shader.setUniformi(spine.webgl.Shader.SAMPLER, 0);
+      shader.setUniform4x4f(spine.webgl.Shader.MVP_MATRIX, currentWidget.mvp.values);
+      batcher.begin(shader);
+      skeletonRenderer.premultipliedAlpha = true;
+      skeletonRenderer.draw(batcher, sk);
+      batcher.end();
+      shader.unbind();
+    }
+
+    // 暴露自动化烘焙接口
+    window.bakerApi = {
+      isReady: function() {
+        return isLoaded && currentWidget != null && currentWidget.loaded;
+      },
+      getModelType: function() {
+        return currentModelType;
+      },
+      setRenderParams: function(offsetX, offsetY, scale) {
+        viewOffsetX = offsetX || 0;
+        viewOffsetY = offsetY || 0;
+        viewScale = scale || 1.0;
+      },
+      setCustomPoseType: function(poseType) {
+        window.customPoseType = poseType || "";
+      },
+      setTransitionInfo: function(fromAnim, toAnim, durSec) {
+        window.transitionInfo = { from: fromAnim, to: toAnim, dur: durSec || 0.8 };
+      },
+      init: function(modelType, animName) {
+        return new Promise(function(resolve) {
+          initWidget(modelType, animName, function(ok, err) {
+            resolve({ ok: ok, err: err });
+          });
+        });
+      },
+      seekFrame: function(animName, timeSec, loop) {
+        if (!currentWidget || !currentWidget.loaded) return false;
+        window.currentBakeTime = timeSec || 0.0;
+        currentWidget.pause();
+        var state = currentWidget.state;
+        state.clearTracks();
+        state.setAnimation(0, animName, loop !== undefined ? loop : true);
+        var track = state.getCurrent(0);
+        if (track) {
+          track.trackTime = timeSec;
+        }
+        redrawCurrentFrame();
+        return true;
+      },
+      seekTransitionFrame: function(fromAnim, toAnim, timeSec, totalDuration) {
+        if (!currentWidget || !currentWidget.loaded) return false;
+        window.currentBakeTime = timeSec || 0.0;
+        window.transitionInfo = { from: fromAnim, to: toAnim, dur: totalDuration || 0.8 };
+        currentWidget.pause();
+        redrawCurrentFrame();
+        return true;
+      },
+      captureDataUrl: function() {
+        if (!currentWidget || !currentWidget.canvas) return "";
+        return currentWidget.canvas.toDataURL("image/png");
+      }
+    };
+
+    window.addEventListener("DOMContentLoaded", function() {
+      initWidget("build", "Relax");
+    });
+  </script>
+</body>
+</html>

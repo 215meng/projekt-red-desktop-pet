@@ -1,0 +1,9 @@
+{
+  "default_mix_duration": 0.25,
+  "transitions": {
+    "idle->sit": "trans_sit",
+    "sit->sleep": "trans_sleep",
+    "fall->land": "land",
+    "drag->fall": "fall"
+  }
+}

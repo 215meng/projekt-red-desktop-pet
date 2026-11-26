@@ -1,0 +1,192 @@
+{
+  "name": "spine_red",
+  "title": "明日方舟·红 (Spine 工业级骨骼版)",
+  "author": "Antigravity Pipeline",
+  "version": "4.5.0",
+  "description": "明日方舟红 4.5 精修版：自制补全道具/表情/怀抱大尾部件，17 套自然流畅 Spine 动作与统一接地过渡。",
+  "fps": 30,
+  "width": 360,
+  "height": 480,
+  "anchor_y": 466,
+  "default_scale": 1.0,
+  "actions": {
+    "idle": {
+      "name": "待机长呼吸",
+      "type": "loop",
+      "duration": 2.0,
+      "frames_count": 60,
+      "fps": 30,
+      "loop": true,
+      "desc": "单周期 2.0s 超平滑起承转合深呼吸与尾巴波浪摇摆"
+    },
+    "walk": {
+      "name": "欢快漫步",
+      "type": "loop",
+      "duration": 1.8667,
+      "frames_count": 56,
+      "fps": 30,
+      "loop": true,
+      "desc": "完整单步态周期欢快迈步，红风衣微扬"
+    },
+    "drag": {
+      "name": "提溜悬空扑腾",
+      "type": "loop",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": true,
+      "desc": "后颈提起悬空，双耳与4节尾巴自然重垂，双手出兜垂放，小短腿半空轻蹬"
+    },
+    "sit": {
+      "name": "抱尾乖坐",
+      "type": "loop",
+      "duration": 2.667,
+      "frames_count": 80,
+      "fps": 30,
+      "loop": true,
+      "desc": "统一 0.85 全尺寸稳稳坐于桌面地面线，双手插兜微晃尾巴乖巧陪伴"
+    },
+    "sleep": {
+      "name": "蜷缩熟睡",
+      "type": "loop",
+      "duration": 2.0,
+      "frames_count": 60,
+      "fps": 30,
+      "loop": true,
+      "desc": "统一 0.85 全尺寸贴地安睡，附带随呼吸缩放的高光睡眠小气泡"
+    },
+    "headpat": {
+      "name": "摸头反应",
+      "type": "once",
+      "duration": 1.5,
+      "frames_count": 45,
+      "fps": 30,
+      "loop": false,
+      "desc": "被温柔摸头时闭上幸福月牙笑眼、泛起双颊红晕、轻轻迎合摇尾"
+    },
+    "dizzy": {
+      "name": "戳晕防备",
+      "type": "once",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": false,
+      "desc": "短时间内被连续快速狂戳脑袋时，露出蚊香晕眩眼后退防备的傲娇彩蛋"
+    },
+    "trans_sit": {
+      "name": "站姿转坐过渡",
+      "type": "transition",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": false,
+      "desc": "站立姿态真·双轨道融合屈膝下坐至地面过渡切片"
+    },
+    "trans_sleep": {
+      "name": "坐姿转睡过渡",
+      "type": "transition",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": false,
+      "desc": "坐姿真·双轨道平滑蜷身俯卧入睡过渡切片"
+    },
+    "fall": {
+      "name": "半空飘落",
+      "type": "loop",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": true,
+      "desc": "半空自由落体，双手出兜微张平衡，风衣飘带与尾巴受风上扬"
+    },
+    "land": {
+      "name": "触地缓冲",
+      "type": "once",
+      "duration": 1.0,
+      "frames_count": 30,
+      "fps": 30,
+      "loop": false,
+      "desc": "完美承接飘落瞬间屈膝受力缓冲，双臂平顺收回口袋，零跳变站稳"
+    },
+    "cuddle_tail": {
+      "name": "抱尾蹭脸",
+      "type": "loop",
+      "duration": 2.667,
+      "frames_count": 80,
+      "fps": 30,
+      "loop": true,
+      "desc": "坐姿双手环抱前置蓬松大狼尾，双颊红晕闭眼轻蹭绒毛"
+    },
+    "sharpen_knife": {
+      "name": "磨刀拭刃",
+      "type": "loop",
+      "duration": 2.0,
+      "frames_count": 60,
+      "fps": 30,
+      "loop": true,
+      "desc": "左手胸前横持便携短匕首，右手持战术磨刀石贴刃往复打磨并绽放寒芒"
+    },
+    "alert_scout": {
+      "name": "警惕耸耳",
+      "type": "once",
+      "duration": 1.8,
+      "frames_count": 54,
+      "fps": 30,
+      "loop": false,
+      "desc": "屈膝下伏、左手轻护腰后刀柄，狼耳直竖平滑环顾侦察动静"
+    },
+    "yawn_stretch": {
+      "name": "伸懒腰打哈欠",
+      "type": "once",
+      "duration": 2.0,
+      "frames_count": 60,
+      "fps": 30,
+      "loop": false,
+      "desc": "右手出兜轻掩嘴边打哈欠，左臂斜伸舒展，闭眼含晶莹泪珠并翘尾抖耳"
+    },
+    "edge_peek": {
+      "name": "边缘探头张望",
+      "type": "once",
+      "duration": 2.0,
+      "frames_count": 60,
+      "fps": 30,
+      "loop": false,
+      "desc": "双手出兜并行扒住屏幕边界，脊柱自然前倾探头，瞪大黄瞳好奇张望"
+    },
+    "doze_off": {
+      "name": "深夜打瞌睡",
+      "type": "once",
+      "duration": 2.667,
+      "frames_count": 80,
+      "fps": 30,
+      "loop": false,
+      "desc": "坐姿安详闭眼吹起睡眠泡，两次小鸡啄米打盹后猛地惊醒抖耳守候"
+    }
+  },
+  "transitions": {
+    "idle->sit": "trans_sit",
+    "sit->sleep": "trans_sleep",
+    "Relax->Sit": "trans_sit",
+    "Sit->Sleep": "trans_sleep",
+    "fall->land": "land",
+    "drag->fall": "fall"
+  },
+  "dialogues": [
+    "红的尾巴……给博士摸摸。",
+    "尾巴……毛茸茸的大尾巴，红也想摸……",
+    "红会一直在这里，守着博士。",
+    "狼的气味……红抓到你了。",
+    "红很听话的，不会咬人。",
+    "呼呼……大尾巴很暖和。",
+    "红在看着你呢，博士。",
+    "红的小刀很锋利，不会弄伤博士的。",
+    "博士……累了吗？红给你捏捏肩？",
+    "下雪了……红的围巾分你一半。",
+    "耳朵抖了抖……博士刚才在叫红吗？",
+    "博士还不睡吗……红在这里守着你。",
+    "哈啊……红不困，红要保护博士。",
+    "夜深了……给博士倒一杯温水。",
+    "红的耳朵动了动……外面只有风声，很安全。"
+  ]
+}

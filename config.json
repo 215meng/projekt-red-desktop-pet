@@ -1,0 +1,10 @@
+{
+  "current_skin": "spine_red",
+  "scale": 1.0,
+  "dialogues_enabled": true,
+  "activity_level": "quiet",
+  "companion_mode": {
+    "activity_level": "quiet",
+    "dialogue_frequency": "rare"
+  }
+}

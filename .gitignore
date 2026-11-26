@@ -1,0 +1,39 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs & Crash Dumps
+*.log
+pet_crash.log
+
+# Virtual Environments
+.env
+.venv*
+env/
+venv/
+ENV/
+
+# IDE & Editor Files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.bak
+*.tmp
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Temporary Scratch Files & Raw Zip Packages
+scratch/
+*.zip
+
+# Legacy v2/v3 Raw Assets (unused by v4.5 Spine runtime)
+raw_assets/autumn_red/
+raw_assets/v3_sheets/
