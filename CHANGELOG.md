@@ -2,6 +2,51 @@
 
 本项目遵循语义化版本规范 (Semantic Versioning)。
 
+## [v4.6.0-4x-final] - 2026-11-27 (Tag: `v4.6.0`)
+
+### 4.X 终章收尾与 5.X 多皮肤 / AI 生图主题皮肤基座
+- **多皮肤运行时解耦与 AI 皮肤扩展支持 (`PetSkin` / `PetWindow`)**：
+  - `skin.json` 新增 `source_type`、`theme`、`native_facing`（原生朝左素材自动镜像防太空步）、`ground_line_y`、`context_dialogues`（按动作语境覆写台词）及 `generation_meta` 可选元数据；
+  - `_decide_behavior()` 对所有非核心动作接入 `has_action()` 动态检测与优雅降级，5.X 新皮肤仅提供 Tier-1 基础动作即可流畅运行；
+  - 切肤时自动调用 `clear_all_caches()` 释放旧皮肤纹理缓存并重置 Crossfade 残影。
+- **生命周期与体验打磨 (`app.py` / `menu.py`)**：
+  - 增加基于 `QSharedMemory` 的轻量单实例防双开守卫；
+  - 托盘图标支持优先读取皮肤目录下的 `icon.png`；
+  - 持久化 `dialogues_enabled` 台词气泡开关状态，并修复刷新皮肤列表与托盘菜单不同步的问题；统一版本号常量 `pet.__version__ = "4.6.0"`。
+- **Skin Spec v4.6 规范与通用质量门禁 (`tools/validate_skin.py`)**：
+  - 升级 `skins/README.md` 定义 Tier-1/2/3 分级契约；
+  - 新增 `tools/validate_skin.py` 一键校验任意皮肤包的 `skin.json`、`6~60 FPS`、全帧零裁切、接地线一致性及竖直动作零头身分离；新增 `tests/test_v4_6_skin_readiness.py`（全仓库 12/12 测试 100% PASS）。
+
+---
+
+## [v4.5.1-ergonomics-and-minimal-ui] - 2026-11-26 (Tag: `v4.5.1`)
+
+### 人体工学精修与极简纯文字面板
+- **手掌比例校准与姿势优化**：缩小 `yawn_stretch` / `edge_peek` / `cuddle_tail` 中的过大手掌并隐藏多余握刀叠层；`edge_peek` 重塑为自然屈肘扶窗框姿态；`doze_off` 推迟合眼消除首帧闪眨；`headpat`/`cuddle_tail` 红晕透明度柔化。
+- **物理动作链回归自然**：参考 `v4.2.0-stable` 重塑 `drag` / `fall` / `land`（恢复自然插兜、垂直轻盈下落与立定微屈膝缓冲，消灭跪坐感；`fall[0] -> land[0]` 头顶偏差 0px、中心偏差 1px、下沉深度 20px、`land[-1] -> idle[0]` 偏差 0px）。
+- **极简纯文字右键与托盘菜单**：全面移除 Emoji 迷你图标与冗余括号，更换为 Fluent Dark 深灰细描边样式（`#1e2024`）。
+- **竞态修复**：`baker.html` 初始化回调加入 `widget.pause()`，彻底消除首帧缩放偶发退回 `1.0x` 的竞态。
+
+---
+
+## [v4.5.0-anatomical-overhaul] - 2026-11-26 (Tag: `v4.5.0`)
+
+### 全动作解剖学重塑、自制缺漏部件与 120ms 柔和过渡
+- **根治头身分离与右手解锁**：全动作禁止修改 `F_Head.x`，改用 `applySpineBend` 脊柱三节联动；解锁 `Ik_F_R_Hand.mix` 与 `drawOrder` 动态排序，实现右手出兜掩嘴、磨刀与抱尾。
+- **独立扩展 Spine 资产包 (`assets/build_pet`)**：4x 超采样精绘补全 8 个原生骨骼挂载部件（`P_HappyBlush`、`P_SleepyEyes`、`P_TearDrop`、`P_SleepBubble`、`P_KnifeSpark`、`P_WhetstoneHand`、`P_OpenHand`、`P_FrontTail`），全套扩展至 17 套动作 / 875 帧。
+- **双轨道真过渡与运行期 Crossfade**：重写 `trans_sit` / `trans_sleep` 双轨道视口同步混合；运行时新增 4 帧（~120ms）余弦交叉淡入淡出，坐姿派生动作播毕平滑回归 `sit`。
+- **狂戳彩蛋与质量审计**：新增 `dizzy`（2 秒内连续狂戳 >= 5 次触发），并建立 `tests/test_anatomical_and_transition_quality.py`。
+
+---
+
+## [v4.4.0-context-actions] - 2026-10-25 (Tag: `v4.4.0`)
+
+### 环境感知与情境交互动作
+- 新增 `edge_peek`（靠边停步概率触发边缘探头张望）与 `doze_off`（深夜陪伴打瞌睡）；
+- 完善右键与托盘菜单动态排序及配套契约测试 `tests/test_v4_4_context_actions.py`。
+
+---
+
 ## [v4.3.0-actions-expansion] - 2026-10-25 (Branch: `v4.1-clean-architecture`, Tag: `v4.3.0`)
 
 ### 🐺 红崽招牌特质动作库大扩容 (Projekt Red Expressive Actions Expansion)

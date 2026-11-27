@@ -104,7 +104,13 @@ class PetSkin:
         self.anchor_y: int = 466
         self.default_scale: float = 1.0
         self.fps: int = 30
+        self.source_type: str = "spine"
+        self.theme: str = "default"
+        self.native_facing: str = "right"
+        self.ground_line_y: Optional[int] = None
         self.dialogues: List[str] = []
+        self.context_dialogues: Dict[str, List[str]] = {}
+        self.generation_meta: Dict[str, Any] = {}
         self.actions: Dict[str, SkinAction] = {}
         self.transitions: Dict[str, str] = {}
         self._load()
@@ -128,7 +134,17 @@ class PetSkin:
                     self.base_size = (w, h)
                     self.anchor_y = meta.get("anchor_y", 466)
                     self.default_scale = float(meta.get("default_scale", 1.0))
+                    self.source_type = meta.get("source_type", "spine")
+                    self.theme = meta.get("theme", "default")
+                    facing = str(meta.get("native_facing", "right")).lower()
+                    self.native_facing = facing if facing in ("right", "left") else "right"
+                    raw_gl = meta.get("ground_line_y", None)
+                    self.ground_line_y = int(raw_gl) if raw_gl is not None else None
                     self.dialogues = meta.get("dialogues", [])
+                    ctx_dlg = meta.get("context_dialogues", {})
+                    self.context_dialogues = ctx_dlg if isinstance(ctx_dlg, dict) else {}
+                    gen_meta = meta.get("generation_meta", {})
+                    self.generation_meta = gen_meta if isinstance(gen_meta, dict) else {}
                     global_fps = meta.get("fps", 30)
                     self.fps = global_fps
                     actions_cfg = meta.get("actions", {})
@@ -191,3 +207,26 @@ class PetSkin:
 
     def get_action(self, action_name: str) -> Optional[SkinAction]:
         return self.actions.get(action_name) or self.actions.get("idle")
+
+    def get_icon_path(self) -> Optional[Path]:
+        """优先返回皮肤自定义 icon.png，其次回退到 idle 首帧图片路径。"""
+        candidates = [
+            self.skin_path / "icon.png",
+            self.skin_path / "frames" / "idle" / "frame_000.png",
+            self.skin_path / "actions" / "idle" / "idle_00.png",
+        ]
+        for p in candidates:
+            if p.exists():
+                return p
+        idle_act = self.actions.get("idle")
+        if idle_act and getattr(idle_act.frames, "file_paths", None):
+            first = idle_act.frames.file_paths[0]
+            if Path(first).exists():
+                return Path(first)
+        return None
+
+    def clear_all_caches(self):
+        """释放当前皮肤所有动作的滑动窗口纹理缓存（切肤瘦身）。"""
+        for act in self.actions.values():
+            if hasattr(act.frames, "clear_cache"):
+                act.frames.clear_cache()

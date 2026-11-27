@@ -88,7 +88,7 @@ def _add_skin_submenu(menu: QMenu, window: "PetWindow"):
 
     skin_menu.addSeparator()
     reload_action = skin_menu.addAction("刷新皮肤列表")
-    reload_action.triggered.connect(lambda: window.skin_manager.reload_skins())
+    reload_action.triggered.connect(window.reload_skins)
     return skin_menu
 
 
@@ -237,7 +237,7 @@ def build_pet_context_menu(window: "PetWindow") -> QMenu:
     dialogue_act = menu.addAction("台词气泡")
     dialogue_act.setCheckable(True)
     dialogue_act.setChecked(window.dialogues_enabled)
-    dialogue_act.triggered.connect(lambda: setattr(window, "dialogues_enabled", dialogue_act.isChecked()))
+    dialogue_act.triggered.connect(lambda checked=False: window.set_dialogues_enabled(checked))
 
     # 7. 摸摸红崽
     say_act = menu.addAction("摸摸红崽")
@@ -293,7 +293,7 @@ def build_pet_tray_menu(window: "PetWindow", app: QApplication) -> QMenu:
     dialogue_act = tray_menu.addAction("台词气泡")
     dialogue_act.setCheckable(True)
     dialogue_act.setChecked(window.dialogues_enabled)
-    dialogue_act.triggered.connect(lambda: setattr(window, "dialogues_enabled", dialogue_act.isChecked()))
+    dialogue_act.triggered.connect(lambda checked=False: window.set_dialogues_enabled(checked))
 
     tray_menu.addSeparator()
 

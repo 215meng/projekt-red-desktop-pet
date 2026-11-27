@@ -33,6 +33,10 @@ class DialogueManager:
             "红很乖的，尾巴也给你摸摸。",
             "博士的手掌……很暖和。",
         ],
+        "dizzy": [
+            "博士……别一直戳红的脑袋，会晕的……",
+            "呜……眼睛转圈圈了，博士好过分。",
+        ],
         "idle": [
             "红的尾巴……给博士摸摸。",
             "尾巴……毛茸茸的大尾巴，红也想摸……",
@@ -50,17 +54,26 @@ class DialogueManager:
 
     def __init__(self, custom_dialogues: Optional[List[str]] = None):
         self.skin_dialogues: List[str] = list(custom_dialogues) if custom_dialogues else []
+        self.skin_context_dialogues: Dict[str, List[str]] = {}
         self.enabled: bool = True
 
     def set_skin_dialogues(self, dialogues: List[str]):
         self.skin_dialogues = list(dialogues)
 
+    def set_skin_context_dialogues(self, context_dialogues: Optional[Dict[str, List[str]]]):
+        self.skin_context_dialogues = {
+            str(k): list(v) for k, v in (context_dialogues or {}).items()
+            if isinstance(v, list) and v
+        }
+
     def get_context_dialogue(self, context: str) -> str:
-        """根据语境上下文获取台词"""
+        """根据语境上下文获取台词：优先匹配皮肤专属 context_dialogues，其次默认池"""
         if not self.enabled:
             return ""
 
-        candidates = self.CONTEXT_DIALOGUES.get(context, [])
+        candidates = self.skin_context_dialogues.get(context, [])
+        if not candidates:
+            candidates = self.CONTEXT_DIALOGUES.get(context, [])
         if not candidates:
             candidates = self.skin_dialogues or self.CONTEXT_DIALOGUES["idle"]
 

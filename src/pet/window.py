@@ -28,6 +28,8 @@ class PetWindow(QWidget):
     skin_changed = Signal(str)
     scale_changed = Signal(float)
     activity_level_changed = Signal(str)
+    dialogues_enabled_changed = Signal(bool)
+    skins_reloaded = Signal(list)
 
     def __init__(
         self,
@@ -192,20 +194,44 @@ class PetWindow(QWidget):
                 skin = avail[0]
             else:
                 return
+
+        if self.current_skin and self.current_skin.skin_id != skin.skin_id:
+            if hasattr(self.current_skin, "clear_all_caches"):
+                self.current_skin.clear_all_caches()
+
+        self._prev_pixmap = None
+        self._crossfade_step = 0
+        self.locked_action = None
+
         self.current_skin = skin
         if getattr(skin, "transitions", None):
             self.transition_scheduler = TransitionScheduler(skin.transitions)
         else:
             self.transition_scheduler = TransitionScheduler()
 
-        if getattr(skin, "dialogues", None):
-            self.dialogue_manager.set_skin_dialogues(skin.dialogues)
+        self.dialogue_manager.set_skin_dialogues(getattr(skin, "dialogues", None) or [])
+        self.dialogue_manager.set_skin_context_dialogues(getattr(skin, "context_dialogues", None) or {})
 
         w, h = skin.base_size
         self.resize(int(w * self.scale_factor), int(h * self.scale_factor))
         self.move(self.x(), self.get_ground_y())
         self.play_action("idle", force=True, use_transition=False)
         self.skin_changed.emit(skin.skin_id)
+
+    def reload_skins(self) -> list:
+        """重新扫描皮肤目录并同步刷新当前引用，通知托盘与菜单更新。"""
+        ids = self.skin_manager.reload_skins()
+        if self.current_skin:
+            refreshed = self.skin_manager.get_skin(self.current_skin.skin_id)
+            if refreshed:
+                self.current_skin = refreshed
+        self.skins_reloaded.emit(ids)
+        return ids
+
+    def set_dialogues_enabled(self, enabled: bool):
+        """切换台词气泡开关并广播持久化信号。"""
+        self.dialogues_enabled = bool(enabled)
+        self.dialogues_enabled_changed.emit(self.dialogues_enabled)
 
     def set_scale(self, scale: float):
         self.scale_factor = max(0.20, min(3.0, scale))
@@ -439,6 +465,7 @@ class PetWindow(QWidget):
             self.behavior_timer.start(120000)
             return
 
+        has = lambda act: bool(self.current_skin and self.current_skin.has_action(act))
         inactive_sec = time.time() - self.last_interaction_time
 
         import datetime
@@ -456,56 +483,58 @@ class PetWindow(QWidget):
         if self.state == "sit":
             r = random.random()
             if is_late_night:
-                if r < 0.35:
+                if r < 0.35 and has("doze_off"):
                     self.play_action("doze_off")
                     if self.dialogues_enabled and random.random() < 0.50:
                         self.say_random_dialogue()
-                elif r < 0.65:
+                elif r < 0.65 and has("sleep"):
                     self.play_action("sleep")
-                elif r < 0.85:
+                elif r < 0.85 and has("cuddle_tail"):
                     self.play_action("cuddle_tail")
-                else:
+                elif not has("sleep") and not has("doze_off") and not has("cuddle_tail"):
+                    self.play_action("idle")
+                elif r >= 0.85:
                     self.play_action("idle")
             elif inactive_sec > 150:
-                if r < 0.25:
+                if r < 0.25 and has("sleep"):
                     self.play_action("sleep")
                 elif r < 0.45:
                     self.play_action("idle")
             else:
-                if r < 0.20:
+                if r < 0.20 and has("cuddle_tail"):
                     self.play_action("cuddle_tail")
                 elif r < 0.45:
                     self.play_action("idle")
             self._schedule_next_behavior()
             return
 
-        # 待机状态下的自主动作决策 (生物钟感知)
+        # 待机状态下的自主动作决策 (支持任意动作子集的优雅降级)
         walk_prob = 0.04 if is_late_night else (0.10 if self.activity_level == "quiet" else (0.20 if self.activity_level == "gentle" else 0.35))
+        flavor_candidates = [a for a in ("sharpen_knife", "alert_scout", "yawn_stretch", "cuddle_tail") if has(a)]
         r = random.random()
-        if r < walk_prob:
+        if r < walk_prob and has("walk"):
             # 随机朝向并迈出同向步伐
             self.facing_left = (random.random() < 0.5)
             self.walk_direction = -1 if self.facing_left else 1
             self.walk_steps_remaining = random.randint(45, 80)
             self.play_action("walk")
-        elif is_late_night and r < 0.60:
-            if r < 0.30:
+        elif is_late_night and r < 0.60 and (has("doze_off") or has("sit")):
+            if r < 0.30 and has("doze_off"):
                 self.play_action("doze_off")
                 if self.dialogues_enabled:
                     self.say_random_dialogue()
-            else:
+            elif has("sit"):
                 self.play_action("sit")
-        elif inactive_sec > 100 and r < walk_prob + 0.30:
+        elif inactive_sec > 100 and r < walk_prob + 0.30 and has("sit"):
             self.play_action("sit")
-        elif r < walk_prob + 0.18:
-            # 偶发招牌特质动作 (磨刀、警惕耸耳、打哈欠伸懒腰、抱尾)
-            flavor_act = random.choice(["sharpen_knife", "alert_scout", "yawn_stretch", "cuddle_tail"])
+        elif flavor_candidates and r < walk_prob + 0.18:
+            flavor_act = random.choice(flavor_candidates)
             self.play_action(flavor_act)
         else:
             self.play_action("idle")
             if self.dialogues_enabled and random.random() < 0.25:
                 self.say_random_dialogue()
-            self._schedule_next_behavior()
+        self._schedule_next_behavior()
 
     # ---------------- 鼠标交互与提溜悬空 ----------------
 
@@ -582,8 +611,10 @@ class PetWindow(QWidget):
                     self._recent_click_times.clear()
                     self.play_action("dizzy", force=True)
                     if self.dialogues_enabled:
-                        head_pos = self.mapToGlobal(QPoint(self.width() // 2, 0))
-                        self.bubble.show_text("博士……别一直戳红的脑袋，会晕的……", head_pos, duration_ms=2600)
+                        dizzy_text = self.dialogue_manager.get_context_dialogue("dizzy")
+                        if dizzy_text:
+                            head_pos = self.mapToGlobal(QPoint(self.width() // 2, 0))
+                            self.bubble.show_text(dizzy_text, head_pos, duration_ms=2600)
                 else:
                     act = "headpat" if self.current_skin and self.current_skin.has_action("headpat") else "idle"
                     self.play_action(act)
@@ -694,6 +725,12 @@ class PetWindow(QWidget):
 
     # ---------------- 绘图渲染 ----------------
 
+    def _resolve_render_facing_left(self, logical_facing_left: bool) -> bool:
+        """结合皮肤 native_facing ('right' | 'left') 计算实际渲染是否需要水平翻转。"""
+        if self.current_skin and getattr(self.current_skin, "native_facing", "right") == "left":
+            return not logical_facing_left
+        return logical_facing_left
+
     def paintEvent(self, event):
         if not self.current_action or self.current_action.frame_count == 0:
             return
@@ -705,6 +742,7 @@ class PetWindow(QWidget):
         painter = QPainter(self)
         squash = self.squash_stretch.update(0.025)
         tilt = self.current_tilt_deg
+        render_facing = self._resolve_render_facing_left(self.facing_left)
 
         if (
             self._crossfade_step > 0
@@ -719,7 +757,7 @@ class PetWindow(QWidget):
                 self._prev_pixmap,
                 self.width(),
                 self.height(),
-                facing_left=self._prev_facing_left,
+                facing_left=self._resolve_render_facing_left(self._prev_facing_left),
                 squash_stretch=squash,
                 anchor_bottom=True,
                 rotation_deg=tilt,
@@ -730,7 +768,7 @@ class PetWindow(QWidget):
                 pixmap,
                 self.width(),
                 self.height(),
-                facing_left=self.facing_left,
+                facing_left=render_facing,
                 squash_stretch=squash,
                 anchor_bottom=True,
                 rotation_deg=tilt,
@@ -742,7 +780,7 @@ class PetWindow(QWidget):
                 pixmap,
                 self.width(),
                 self.height(),
-                facing_left=self.facing_left,
+                facing_left=render_facing,
                 squash_stretch=squash,
                 anchor_bottom=True,
                 rotation_deg=tilt

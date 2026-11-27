@@ -1,8 +1,8 @@
 """
-Projekt Red Desktop Pet 4.1.0 Clean Architecture.
+Projekt Red Desktop Pet 4.6.0 Clean Architecture.
 """
 
-__version__ = "4.1.0"
+__version__ = "4.6.0"
 
 from .config import ConfigManager
 from .skin import SkinManager, PetSkin, SkinAction
